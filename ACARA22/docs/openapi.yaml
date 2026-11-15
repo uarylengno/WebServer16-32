@@ -23,8 +23,8 @@ info:
     name: Uaryl Engno Laurenca (E41250317)
 
 servers:
-  - url: http://localhost/sistem-informasi-akademik/public
-    description: Lokal (XAMPP)
+  - url: http://localhost/ACARA16-25/ACARA22/public
+    description: Lokal (Laragon)
 
 tags:
   - name: Autentikasi

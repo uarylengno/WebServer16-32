@@ -19,14 +19,14 @@ Resource `/buku` memakai pola kode yang sama dan tidak diuji ulang pada acara in
 
 | Item | Nilai |
 |---|---|
-| Base URL | `http://localhost/sistem-informasi-akademik/public` |
+| Base URL | `http://localhost/ACARA16-25/ACARA23/public` |
 | Alat | Postman (Collection dan Environment dari Acara 19), `curl` |
 | Pengguna uji | `penguji` (didaftarkan lewat `POST /register`, token dari `POST /login`) |
-| Kondisi awal | Database dari `db_workshop.sql` (tabel kosong) |
+| Kondisi awal | Database `db_workshop_acara23` dari `db_workshop.sql` (tabel kosong) |
 
 Catatan kejujuran: hasil aktual pada dokumen ini diperoleh dengan mengirim request HTTP nyata ke aplikasi yang sama,
 tetapi pada lingkungan pengembangan yang memakai SQLite sebagai pengganti MySQL (server bawaan PHP). Kode PHP identik.
-Sebelum dikumpulkan, jalankan ulang tiap test case di Postman pada XAMPP milikmu dan sesuaikan kolom **Hasil aktual** bila berbeda.
+Sebelum dikumpulkan, jalankan ulang tiap test case di Postman pada Laragon milikmu dan sesuaikan kolom **Hasil aktual** bila berbeda.
 
 ## 3. Partisi Ekuivalen (Equivalence Partitioning)
 
@@ -150,11 +150,11 @@ if (!is_string($id) || $id === '' || !ctype_digit($id) || (int) $id < 1) {
 - NIM yang dikirim sebagai angka JSON (`220100123` tanpa tanda kutip) diterima dan diperlakukan sebagai string.
 - Percobaan injeksi SQL pada `id` (`1 OR 1=1`) dan `nim` ditolak dengan 400 atau 422, dan data tidak berubah (prepared statement).
 - Aturan NIM di kode adalah "tepat 9 karakter" (tidak harus angka), sedangkan pesan error menyebut "9 digit".
-- Dengan MySQL, pembandingan NIM tidak peka huruf besar/kecil (collation bawaan), sedangkan SQLite yang dipakai pengujian ini peka. Kasus `e41250317` versus `E41250317` perlu kamu coba sendiri di XAMPP.
+- Dengan MySQL, pembandingan NIM tidak peka huruf besar/kecil (collation bawaan), sedangkan SQLite yang dipakai pengujian ini peka. Kasus `e41250317` versus `E41250317` perlu kamu coba sendiri di Laragon.
 
 ## 8. Cara Menjalankan di Postman
 
-1. Import `db_workshop.sql` agar tabel kosong, jalankan XAMPP, pilih Environment **Local**.
+1. Import `db_workshop.sql` agar tabel kosong, jalankan Laragon (Apache dan MySQL), pilih Environment **Local**.
 2. Jalankan `POST /register` lalu `POST /login` (token tersimpan otomatis di variabel `token`).
 3. Eksekusi TC sesuai urutan tabel. Data pendukung: buat tiga mahasiswa lebih dulu (`220100123`, `220100124`, `220100125`) bila ingin mengulang TC07 sampai TC22.
 4. Catat status HTTP dan pesan yang diterima pada kolom **Hasil aktual**, lalu bandingkan dengan **Hasil diharapkan**.

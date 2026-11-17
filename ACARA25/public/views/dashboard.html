@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Disembunyikan sampai dashboard.js memastikan ada sesi, agar halaman tidak sempat tampil sebelum dialihkan ke login. -->
+    <main id="isi" hidden>
+        <header class="atas">
+            <div>
+                <h1>Dashboard</h1>
+                <p class="sub">Sistem Informasi Akademik</p>
+            </div>
+            <div class="pengguna">
+                <span id="nama-pengguna"></span>
+                <span id="lencana-role" class="lencana"></span>
+                <button type="button" id="tombol-logout" class="sekunder">Logout</button>
+            </div>
+        </header>
+
+        <p id="catatan-user" class="pesan pesan-info" hidden>
+            Anda masuk sebagai <strong>user</strong>: data hanya dapat dilihat. Menambah, mengubah, dan menghapus data hanya untuk admin.
+        </p>
+
+        <section class="statistik" aria-label="Ringkasan data" style="margin-top:16px">
+            <div class="kartu"><div class="angka" id="stat-total">-</div><div class="label">Total mahasiswa</div></div>
+            <div class="kartu"><div class="angka" id="stat-prodi">-</div><div class="label">Program studi</div></div>
+            <div class="kartu"><div class="angka" id="stat-role">-</div><div class="label">Peran Anda</div></div>
+        </section>
+
+        <section>
+            <div class="bar">
+                <h2>Data Mahasiswa</h2>
+                <div class="aksi">
+                    <button type="button" id="tombol-muat" class="sekunder">Muat ulang</button>
+                    <button type="button" id="tombol-tambah" class="hanya-admin">Tambah</button>
+                </div>
+            </div>
+
+            <p id="status" class="pesan pesan-info" role="status" aria-live="polite">Memuat data...</p>
+
+            <div class="tabel-bungkus">
+                <table id="tabel-mahasiswa" hidden>
+                    <thead>
+                        <tr>
+                            <th>NIM</th><th>Nama</th><th>Program Studi</th>
+                            <th class="hanya-admin">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <dialog id="dialog-form" aria-labelledby="judul-dialog">
+        <h2 id="judul-dialog">Tambah Mahasiswa</h2>
+        <form id="form-mhs" novalidate>
+            <p id="galat-umum" class="pesan pesan-error" role="alert" hidden style="margin-bottom:14px"></p>
+            <div class="bidang">
+                <label for="f-nim">NIM</label>
+                <input type="text" id="f-nim" name="nim" autocomplete="off" required>
+                <div class="galat-bidang" id="galat-nim"></div>
+            </div>
+            <div class="bidang">
+                <label for="f-nama">Nama</label>
+                <input type="text" id="f-nama" name="nama" autocomplete="off" required>
+                <div class="galat-bidang" id="galat-nama"></div>
+            </div>
+            <div class="bidang">
+                <label for="f-prodi">Program Studi</label>
+                <input type="text" id="f-prodi" name="prodi" autocomplete="off" required>
+                <div class="galat-bidang" id="galat-prodi"></div>
+            </div>
+            <div class="tombol-dialog">
+                <button type="button" id="tombol-batal" class="sekunder">Batal</button>
+                <button type="submit" id="tombol-simpan">Simpan</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="common.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

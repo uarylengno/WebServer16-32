@@ -1,0 +1,6 @@
+# Foto hasil upload dan berkas cadangan database tidak ikut ke repository (berisi data pengguna).
+public/uploads/*
+!public/uploads/.gitkeep
+!public/uploads/.htaccess
+backup/*
+!backup/.gitkeep

@@ -1,0 +1,1267 @@
+# Dokumentasi API - Sistem Informasi Akademik
+
+BKPM Workshop SI Web Server (TIF330805), Acara 21 - Dokumentasi Endpoint (diperbarui Acara 24, 25, dan 26).
+Dokumen ini menjelaskan seluruh endpoint yang dilayani kode pada Acara 20 (PHP Native, arsitektur MVC). Semua contoh response diambil dari eksekusi nyata kode tersebut.
+
+| Informasi | Nilai |
+|---|---|
+| Base URL | `http://localhost/ACARA16-25/ACARA26/public` |
+| Format | JSON (`Content-Type: application/json`) untuk request dan response |
+| Autentikasi | Bearer Token (JWT HS256), berlaku 300 detik (5 menit) |
+| Otorisasi (Acara 25) | RBAC: `POST`/`PUT`/`DELETE` `/mahasiswa` hanya untuk role `admin`; role `user` hanya boleh membaca |
+| Upload (Acara 26) | `multipart/form-data` pada `POST /mahasiswa` dan `POST /mahasiswa?id={id}&_method=PUT`; berkas `foto` JPG/PNG maks 2MB disimpan di `public/uploads/` |
+| Pembaruan terakhir | 30 Oktober 2026 |
+
+## 1. Ringkasan Endpoint
+
+| No | Method | Endpoint | Controller | Autentikasi | Sukses | Fungsi |
+|---|---|---|---|---|---|---|
+| 1 | `POST` | `/register` | `AuthController::register()` | Publik | 201 | Mendaftarkan pengguna baru |
+| 2 | `POST` | `/login` | `AuthController::login()` | Publik | 200 | Memverifikasi kredensial dan menerbitkan token JWT (HS256) yang berlaku 300 detik (5 menit) |
+| 3 | `GET` | `/mahasiswa` | `MahasiswaController::index()` | Publik | 200 | Menampilkan seluruh data mahasiswa (terbaru lebih dulu) |
+| 4 | `GET` | `/mahasiswa?id={id}` | `MahasiswaController::index()` | Publik | 200 | Menampilkan satu mahasiswa berdasarkan ID (method yang sama dengan daftar, dibedakan oleh `?id=`) |
+| 5 | `POST` | `/mahasiswa` | `MahasiswaController::store()` | Bearer Token (admin) | 201 | Menambahkan mahasiswa baru |
+| 6 | `PUT` | `/mahasiswa?id={id}` | `MahasiswaController::update()` | Bearer Token (admin) | 200 | Mengubah seluruh data mahasiswa (semua field wajib dikirim) |
+| 7 | `DELETE` | `/mahasiswa?id={id}` | `MahasiswaController::destroy()` | Bearer Token (admin) | 200 | Menghapus mahasiswa berdasarkan ID |
+| 8 | `GET` | `/buku` | `BukuController::index()` | Publik | 200 | Menampilkan seluruh data buku |
+| 9 | `GET` | `/buku?id={id}` | `BukuController::index()` | Publik | 200 | Menampilkan satu buku berdasarkan ID (method yang sama dengan daftar, dibedakan oleh `?id=`) |
+| 10 | `POST` | `/buku` | `BukuController::store()` | Bearer Token | 201 | Menambahkan buku baru |
+| 11 | `PUT` | `/buku?id={id}` | `BukuController::update()` | Bearer Token | 200 | Mengubah seluruh data buku |
+| 12 | `DELETE` | `/buku?id={id}` | `BukuController::destroy()` | Bearer Token | 200 | Menghapus buku berdasarkan ID |
+
+Aturan umum: operasi **baca (GET)** bersifat publik, sedangkan operasi **tulis (POST/PUT/DELETE)** pada `/mahasiswa` dan `/buku` wajib membawa token. `/register` dan `/login` publik karena dipakai untuk memperoleh token.
+
+## 2. Peta Router
+
+`Router::dispatch()` membaca segmen terakhir URL sebagai nama resource, lalu memanggil Controller yang sesuai.
+
+| Resource (URL) | Controller | Keterangan |
+|---|---|---|
+| `/mahasiswa` | `MahasiswaController` | CRUD data mahasiswa (`index` / `store` / `update` / `destroy`, dipilih dari HTTP method) |
+| `/buku` | `BukuController` | CRUD data buku (pola sama dengan mahasiswa) |
+| `/login` | `AuthController::login` | Autentikasi pengguna, menghasilkan token. Hanya menerima POST |
+| `/register` | `AuthController::register` | Pendaftaran pengguna baru. Hanya menerima POST |
+
+Pemetaan HTTP method pada resource CRUD: `GET` -> `index()`, `POST` -> `store()`, `PUT` -> `update($id)`, `DELETE` -> `destroy($id)`. ID dikirim lewat query string `?id=`. Method lain dibalas `405`; resource yang tidak ada dibalas `404`.
+
+```
+Client -> public/index.php (Front Controller) -> Router::dispatch()
+            -> Controller (Auth::requireAuth() / Auth::requireAdmin() bila terproteksi, validasi)
+            -> Model (PDO + prepared statement) -> MySQL
+            -> Response::json() -> Client
+```
+
+## 3. Format Response dan Status Code
+
+Semua response (sukses maupun gagal, dari Router maupun Controller) dibentuk oleh `Response::json()`:
+
+| Field | Tipe | Keterangan |
+|---|---|---|
+| `success` | boolean | `true` jika berhasil, `false` jika gagal |
+| `message` | string | Pesan ringkas untuk manusia |
+| `data` | object / array / null | Data hasil, atau `null` |
+| `errors` | object | **Hanya muncul** bila ada kesalahan per field, contoh `{"nim": "..."}` |
+| `timestamp` | string | Waktu response (ISO 8601) |
+
+Mode `APP_ENV=development` (`app/config/app.php`) menampilkan JSON berindentasi; mode `production` menampilkan JSON satu baris. Isi datanya sama.
+
+| Kode | Arti | Dipakai ketika |
+|---|---|---|
+| 200 | OK | GET, PUT, DELETE, atau login berhasil |
+| 201 | Created | POST berhasil membuat data (register, tambah data) |
+| 400 | Bad Request | Body bukan JSON valid, field wajib kosong, atau `id` bukan angka positif |
+| 401 | Unauthorized | Token tidak ada / tidak valid / kedaluwarsa; username atau password login salah (identitas belum terbukti) |
+| 403 | Forbidden | Token sah, tetapi role pengguna bukan `admin` untuk operasi yang meminta admin (Acara 25) |
+| 404 | Not Found | ID atau endpoint tidak ditemukan |
+| 405 | Method Not Allowed | Method tidak didukung endpoint (header `Allow` disertakan) |
+| 409 | Conflict | NIM, username, atau email sudah dipakai |
+| 422 | Unprocessable Entity | JSON lengkap tetapi isinya melanggar aturan (format NIM, email, tahun, panjang teks) |
+| 500 | Internal Server Error | Kesalahan server (mis. database); detail hanya di log server |
+
+Kode `403 Forbidden` dipakai sejak Acara 25 untuk pembatasan berdasarkan role (lihat bagian 4.1).
+
+Contoh `500` (semua endpoint; pesan sengaja umum, tanpa detail SQL):
+
+```json
+{
+    "success": false,
+    "message": "Terjadi kesalahan pada server",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+## 4. Cara Mendapatkan dan Memakai Token
+
+1. `POST /register` (sekali) untuk membuat akun.
+2. `POST /login` -> salin nilai `data.token`.
+3. Kirim pada endpoint terproteksi: `Authorization: Bearer <token>`.
+4. Token berlaku 300 detik. Setelah itu response `401` ("Token tidak valid atau kedaluwarsa"); login ulang untuk token baru.
+
+### 4.1 Peran Pengguna (RBAC, Acara 25)
+
+*Authentication* menjawab "siapa kamu?" (login, token, status `401`). *Authorization* menjawab "boleh melakukan apa?" (role, status `403`).
+Role disimpan di kolom `users.role` dan dimasukkan ke payload token saat login (`data.role` pada response login).
+
+| Role | Membaca data (`GET`) | Tambah/ubah/hapus mahasiswa |
+|---|---|---|
+| Tanpa token | Boleh | `401` |
+| `user` | Boleh | `403` Akses ditolak, hanya admin yang diizinkan |
+| `admin` | Boleh | Boleh |
+
+- `Auth::requireAdmin()` memanggil `Auth::requireAuth()` lebih dulu (401), lalu memeriksa role di payload token (403). Otorisasi dicek **sebelum** validasi body dan pencarian data, sehingga pengguna non-admin selalu mendapat 403 (bukan 400 atau 404) dan tidak bisa menebak ada tidaknya data.
+- Role dibaca dari token yang tanda tangannya sudah terverifikasi. Mengubah role di sisi client (mis. `localStorage`) hanya mengubah tampilan, bukan hak akses.
+- `POST /register` **selalu** membuat role `user` (field `role` dari client diabaikan). Admin pertama dibuat lewat seed di `db_workshop_acara26.sql`: `admin` / `Admin@12345` dan `user_demo` / `User@12345`. **Ganti password ini sebelum deployment.**
+- Perubahan role di database baru berlaku setelah token lama habis (maksimal 300 detik), karena role tersimpan di dalam token.
+- Resource `/buku` pada Acara 25 belum dibatasi role: operasi tulisnya masih cukup dengan token yang sah (`Auth::requireAuth()`).
+
+## 5. Detail Endpoint
+
+### 5.1 Autentikasi
+
+#### 1. `POST /register`
+
+- **Controller:** `AuthController::register()`
+- **Autentikasi:** Publik (tidak perlu token)
+- **Fungsi:** Mendaftarkan pengguna baru. Role selalu `user` (input `role` dari client diabaikan).
+
+**Headers:**
+
+| Header | Nilai | Keterangan |
+|---|---|---|
+| `Content-Type` | `application/json` | Body dikirim sebagai JSON |
+
+**Request body:**
+
+| Field | Tipe | Wajib | Aturan |
+|---|---|---|---|
+| `username` | string | Ya | 3-50 karakter; hanya huruf, angka, titik, garis bawah; harus unik |
+| `email` | string | Ya | Format email valid (`filter_var`), maks 100 karakter, harus unik |
+| `password` | string | Ya | 8-72 karakter. Disimpan sebagai hash, tidak pernah dikembalikan |
+
+```json
+{
+    "username": "andi_saputra",
+    "email": "andi@example.com",
+    "password": "rahasia123"
+}
+```
+
+**Urutan pemeriksaan:**
+
+1. `400` - body bukan JSON valid atau ada field yang kosong
+2. `422` - format data tidak valid (email, panjang password, karakter username)
+3. `409` - username atau email sudah terdaftar
+4. `201` - password di-hash dengan `password_hash()`, data disimpan
+
+**Contoh response:**
+
+*Sukses - `201 Created` - Registrasi berhasil*
+
+```json
+{
+    "success": true,
+    "message": "Registrasi berhasil",
+    "data": {
+        "id": 1,
+        "username": "andi_saputra",
+        "email": "andi@example.com",
+        "role": "user"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `400 Bad Request` - Field wajib kosong*
+
+```json
+{
+    "success": false,
+    "message": "Username, email, dan password wajib diisi",
+    "data": null,
+    "errors": {
+        "password": "Field password wajib diisi"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `405 Method Not Allowed` - Method selain POST*
+
+(header `Allow: POST`)
+
+```json
+{
+    "success": false,
+    "message": "Method tidak diizinkan, gunakan POST",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `409 Conflict` - Username sudah dipakai*
+
+```json
+{
+    "success": false,
+    "message": "Username atau email sudah terdaftar",
+    "data": null,
+    "errors": {
+        "username": "Username sudah dipakai"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `422 Unprocessable Entity` - Email tidak valid*
+
+```json
+{
+    "success": false,
+    "message": "Data tidak lolos validasi",
+    "data": null,
+    "errors": {
+        "email": "Format email tidak valid"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X POST "http://localhost/ACARA16-25/ACARA26/public/register" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "andi_saputra", "email": "andi@example.com", "password": "rahasia123"}'
+```
+
+#### 2. `POST /login`
+
+- **Controller:** `AuthController::login()`
+- **Autentikasi:** Publik (tidak perlu token)
+- **Fungsi:** Memverifikasi kredensial dan menerbitkan token JWT (HS256) yang berlaku 300 detik (5 menit).
+
+**Headers:**
+
+| Header | Nilai | Keterangan |
+|---|---|---|
+| `Content-Type` | `application/json` | Body dikirim sebagai JSON |
+
+**Request body:**
+
+| Field | Tipe | Wajib | Aturan |
+|---|---|---|---|
+| `username` | string | Ya | Username hasil registrasi |
+| `password` | string | Ya | Password akun |
+
+```json
+{
+    "username": "andi_saputra",
+    "password": "rahasia123"
+}
+```
+
+**Urutan pemeriksaan:**
+
+1. `400` - body bukan JSON valid atau username/password kosong
+2. `401` - username tidak ada **atau** password salah (pesan sengaja sama)
+3. `200` - token diterbitkan
+
+**Contoh response:**
+
+*Sukses - `200 OK` - Login berhasil*
+
+```json
+{
+    "success": true,
+    "message": "Login berhasil",
+    "data": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwicm9sZSI6InV...(dipersingkat)",
+        "token_type": "Bearer",
+        "expires_in": 300,
+        "role": "user"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `400 Bad Request` - Field wajib kosong*
+
+```json
+{
+    "success": false,
+    "message": "Username dan password wajib diisi",
+    "data": null,
+    "errors": {
+        "password": "Field password wajib diisi"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `401 Unauthorized` - Username atau password salah*
+
+```json
+{
+    "success": false,
+    "message": "Username atau password salah",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X POST "http://localhost/ACARA16-25/ACARA26/public/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "andi_saputra", "password": "rahasia123"}'
+```
+
+### 5.2 Mahasiswa
+
+#### 3. `GET /mahasiswa`
+
+- **Controller:** `MahasiswaController::index()`
+- **Autentikasi:** Publik (tidak perlu token)
+- **Fungsi:** Menampilkan seluruh data mahasiswa (terbaru lebih dulu).
+
+**Headers:** tidak ada yang wajib.
+
+**Urutan pemeriksaan:**
+
+1. `200` - daftar data (bisa kosong `[]`)
+
+**Contoh response:**
+
+*Sukses - `200 OK` - Semua data (publik)*
+
+```json
+{
+    "success": true,
+    "message": "Data berhasil diambil",
+    "data": [
+        {
+            "id": 2,
+            "nim": "220100102",
+            "nama": "Rina Wulandari",
+            "prodi": "Teknik Informatika",
+            "created_at": "2026-10-24 06:40:00"
+        },
+        {
+            "id": 1,
+            "nim": "220100101",
+            "nama": "Andi Saputra",
+            "prodi": "Teknik Informatika",
+            "created_at": "2026-10-24 06:40:00"
+        }
+    ],
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X GET "http://localhost/ACARA16-25/ACARA26/public/mahasiswa"
+```
+
+#### 4. `GET /mahasiswa?id={id}`
+
+- **Controller:** `MahasiswaController::index()`
+- **Autentikasi:** Publik (tidak perlu token)
+- **Fungsi:** Menampilkan satu mahasiswa berdasarkan ID (method yang sama dengan daftar, dibedakan oleh `?id=`).
+
+**Headers:** tidak ada yang wajib.
+
+**Query parameter:**
+
+| Parameter | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `id` | integer | Ya | ID data; angka positif (contoh `?id=1`) |
+
+**Urutan pemeriksaan:**
+
+1. `400` - `id` bukan angka positif
+2. `404` - ID tidak ditemukan
+3. `200` - data ditemukan
+
+**Contoh response:**
+
+*Sukses - `200 OK` - Satu data*
+
+```json
+{
+    "success": true,
+    "message": "Data berhasil diambil",
+    "data": {
+        "id": 1,
+        "nim": "220100101",
+        "nama": "Andi Saputra",
+        "prodi": "Teknik Informatika",
+        "created_at": "2026-10-24 06:40:00"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `400 Bad Request` - ID bukan angka*
+
+```json
+{
+    "success": false,
+    "message": "Parameter id wajib berupa angka positif",
+    "data": null,
+    "errors": {
+        "id": "ID harus berupa angka positif, contoh: ?id=1"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `404 Not Found` - ID tidak ditemukan*
+
+```json
+{
+    "success": false,
+    "message": "Data tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X GET "http://localhost/ACARA16-25/ACARA26/public/mahasiswa?id=1"
+```
+
+#### 5. `POST /mahasiswa`
+
+- **Controller:** `MahasiswaController::store()`
+- **Autentikasi:** **Wajib, role `admin`** - header `Authorization: Bearer <token>` (`Auth::requireAdmin()`)
+- **Fungsi:** Menambahkan mahasiswa baru.
+
+**Headers:**
+
+| Header | Nilai | Keterangan |
+|---|---|---|
+| `Content-Type` | `application/json` | Body dikirim sebagai JSON |
+| `Authorization` | `Bearer <token>` | Token dari `POST /login` (berlaku 5 menit) |
+
+**Request body:**
+
+| Field | Tipe | Wajib | Aturan |
+|---|---|---|---|
+| `nim` | string | Ya | Tepat 9 karakter; harus unik |
+| `nama` | string | Ya | Maks 100 karakter |
+| `prodi` | string | Ya | Maks 50 karakter |
+
+```json
+{
+    "nim": "220100101",
+    "nama": "Andi Saputra",
+    "prodi": "Teknik Informatika"
+}
+```
+
+**Urutan pemeriksaan:**
+
+1. `401` - token tidak ada / tidak valid / kedaluwarsa (dicek paling awal)
+2. `403` - token sah, tetapi role bukan `admin` (`Auth::requireAdmin()`)
+3. `400` - body bukan JSON valid atau ada field yang kosong
+4. `422` - NIM bukan 9 karakter, atau nama/prodi terlalu panjang
+5. `409` - NIM sudah terdaftar
+6. `201` - data disimpan
+
+**Contoh response:**
+
+*Sukses - `201 Created` - Data berhasil ditambahkan*
+
+```json
+{
+    "success": true,
+    "message": "Data berhasil ditambahkan",
+    "data": {
+        "id": 1
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `400 Bad Request` - Field wajib kosong*
+
+```json
+{
+    "success": false,
+    "message": "Field nim, nama, dan prodi wajib diisi",
+    "data": null,
+    "errors": {
+        "nim": "Field nim wajib diisi"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `401 Unauthorized` - Tanpa token*
+
+(header `WWW-Authenticate: Bearer`)
+
+```json
+{
+    "success": false,
+    "message": "Token tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `401 Unauthorized` - Token tidak valid atau kedaluwarsa*
+
+(header `WWW-Authenticate: Bearer error="invalid_token"`)
+
+```json
+{
+    "success": false,
+    "message": "Token tidak valid atau kedaluwarsa",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `409 Conflict` - NIM sudah terdaftar*
+
+```json
+{
+    "success": false,
+    "message": "NIM sudah terdaftar",
+    "data": null,
+    "errors": {
+        "nim": "NIM sudah dipakai mahasiswa lain"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `422 Unprocessable Entity` - NIM bukan 9 karakter*
+
+```json
+{
+    "success": false,
+    "message": "Data tidak lolos validasi",
+    "data": null,
+    "errors": {
+        "nim": "Format NIM tidak valid, harus 9 digit"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `403 Forbidden` - Token sah, tetapi role bukan admin*
+
+```json
+{
+    "success": false,
+    "message": "Akses ditolak, hanya admin yang diizinkan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X POST "http://localhost/ACARA16-25/ACARA26/public/mahasiswa" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"nim": "220100101", "nama": "Andi Saputra", "prodi": "Teknik Informatika"}'
+```
+
+#### 6. `PUT /mahasiswa?id={id}`
+
+- **Controller:** `MahasiswaController::update()`
+- **Autentikasi:** **Wajib, role `admin`** - header `Authorization: Bearer <token>` (`Auth::requireAdmin()`)
+- **Fungsi:** Mengubah seluruh data mahasiswa (semua field wajib dikirim).
+
+**Headers:**
+
+| Header | Nilai | Keterangan |
+|---|---|---|
+| `Content-Type` | `application/json` | Body dikirim sebagai JSON |
+| `Authorization` | `Bearer <token>` | Token dari `POST /login` (berlaku 5 menit) |
+
+**Query parameter:**
+
+| Parameter | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `id` | integer | Ya | ID data; angka positif (contoh `?id=1`) |
+
+**Request body:**
+
+| Field | Tipe | Wajib | Aturan |
+|---|---|---|---|
+| `nim` | string | Ya | Tepat 9 karakter; harus unik |
+| `nama` | string | Ya | Maks 100 karakter |
+| `prodi` | string | Ya | Maks 50 karakter |
+
+```json
+{
+    "nim": "220100101",
+    "nama": "Andi S",
+    "prodi": "Teknik Informatika"
+}
+```
+
+**Urutan pemeriksaan:**
+
+1. `401` - token tidak ada / tidak valid / kedaluwarsa
+2. `403` - token sah, tetapi role bukan `admin`
+3. `400` - `id` bukan angka positif
+4. `404` - ID tidak ditemukan
+5. `400` / `422` - body tidak valid (sama seperti POST)
+6. `409` - NIM dipakai mahasiswa lain (NIM milik data itu sendiri boleh dikirim ulang)
+7. `200` - data diperbarui
+
+**Contoh response:**
+
+*Sukses - `200 OK` - Data berhasil diperbarui*
+
+```json
+{
+    "success": true,
+    "message": "Data berhasil diperbarui",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `401 Unauthorized` - Tanpa token*
+
+(header `WWW-Authenticate: Bearer`)
+
+```json
+{
+    "success": false,
+    "message": "Token tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `404 Not Found` - ID tidak ditemukan*
+
+```json
+{
+    "success": false,
+    "message": "Data tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `409 Conflict` - NIM dipakai mahasiswa lain*
+
+```json
+{
+    "success": false,
+    "message": "NIM sudah dipakai mahasiswa lain",
+    "data": null,
+    "errors": {
+        "nim": "NIM sudah dipakai mahasiswa lain"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `403 Forbidden` - Token sah, tetapi role bukan admin*
+
+```json
+{
+    "success": false,
+    "message": "Akses ditolak, hanya admin yang diizinkan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X PUT "http://localhost/ACARA16-25/ACARA26/public/mahasiswa?id=1" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"nim": "220100101", "nama": "Andi S", "prodi": "Teknik Informatika"}'
+```
+
+#### 7. `DELETE /mahasiswa?id={id}`
+
+- **Controller:** `MahasiswaController::destroy()`
+- **Autentikasi:** **Wajib, role `admin`** - header `Authorization: Bearer <token>` (`Auth::requireAdmin()`)
+- **Fungsi:** Menghapus mahasiswa berdasarkan ID.
+
+**Headers:**
+
+| Header | Nilai | Keterangan |
+|---|---|---|
+| `Authorization` | `Bearer <token>` | Token dari `POST /login` (berlaku 5 menit) |
+
+**Query parameter:**
+
+| Parameter | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `id` | integer | Ya | ID data; angka positif (contoh `?id=1`) |
+
+**Urutan pemeriksaan:**
+
+1. `401` - token tidak ada / tidak valid / kedaluwarsa
+2. `403` - token sah, tetapi role bukan `admin`
+3. `400` - `id` bukan angka positif
+4. `404` - ID tidak ditemukan
+5. `200` - data dihapus
+
+**Contoh response:**
+
+*Sukses - `200 OK` - Data berhasil dihapus*
+
+```json
+{
+    "success": true,
+    "message": "Data berhasil dihapus",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `401 Unauthorized` - Tanpa token*
+
+(header `WWW-Authenticate: Bearer`)
+
+```json
+{
+    "success": false,
+    "message": "Token tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `404 Not Found` - ID tidak ditemukan*
+
+```json
+{
+    "success": false,
+    "message": "Data tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `403 Forbidden` - Token sah, tetapi role bukan admin*
+
+```json
+{
+    "success": false,
+    "message": "Akses ditolak, hanya admin yang diizinkan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X DELETE "http://localhost/ACARA16-25/ACARA26/public/mahasiswa?id=1" \
+  -H "Authorization: Bearer <token>"
+```
+
+### 5.3 Buku
+
+#### 8. `GET /buku`
+
+- **Controller:** `BukuController::index()`
+- **Autentikasi:** Publik (tidak perlu token)
+- **Fungsi:** Menampilkan seluruh data buku.
+
+**Headers:** tidak ada yang wajib.
+
+**Urutan pemeriksaan:**
+
+1. `200` - daftar data
+
+**Contoh response:**
+
+*Sukses - `200 OK` - Semua data (publik)*
+
+```json
+{
+    "success": true,
+    "message": "Data berhasil diambil",
+    "data": [
+        {
+            "id": 1,
+            "judul": "Belajar PHP Native",
+            "penulis": "Budi Santoso",
+            "tahun": 2023,
+            "created_at": "2026-10-24 06:40:00"
+        }
+    ],
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X GET "http://localhost/ACARA16-25/ACARA26/public/buku"
+```
+
+#### 9. `GET /buku?id={id}`
+
+- **Controller:** `BukuController::index()`
+- **Autentikasi:** Publik (tidak perlu token)
+- **Fungsi:** Menampilkan satu buku berdasarkan ID (method yang sama dengan daftar, dibedakan oleh `?id=`).
+
+**Headers:** tidak ada yang wajib.
+
+**Query parameter:**
+
+| Parameter | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `id` | integer | Ya | ID data; angka positif (contoh `?id=1`) |
+
+**Urutan pemeriksaan:**
+
+1. `400` - `id` bukan angka positif
+2. `404` - ID tidak ditemukan
+3. `200` - data ditemukan
+
+**Contoh response:**
+
+*Sukses - `200 OK` - Satu data*
+
+```json
+{
+    "success": true,
+    "message": "Data berhasil diambil",
+    "data": {
+        "id": 1,
+        "judul": "Belajar PHP Native",
+        "penulis": "Budi Santoso",
+        "tahun": 2023,
+        "created_at": "2026-10-24 06:40:00"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `404 Not Found` - ID tidak ditemukan*
+
+```json
+{
+    "success": false,
+    "message": "Data tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X GET "http://localhost/ACARA16-25/ACARA26/public/buku?id=1"
+```
+
+#### 10. `POST /buku`
+
+- **Controller:** `BukuController::store()`
+- **Autentikasi:** **Wajib** - header `Authorization: Bearer <token>` (`Auth::requireAuth()`)
+- **Fungsi:** Menambahkan buku baru.
+
+**Headers:**
+
+| Header | Nilai | Keterangan |
+|---|---|---|
+| `Content-Type` | `application/json` | Body dikirim sebagai JSON |
+| `Authorization` | `Bearer <token>` | Token dari `POST /login` (berlaku 5 menit) |
+
+**Request body:**
+
+| Field | Tipe | Wajib | Aturan |
+|---|---|---|---|
+| `judul` | string | Ya | Maks 150 karakter |
+| `penulis` | string | Ya | Maks 100 karakter |
+| `tahun` | integer | Ya | Angka 4 digit, 1000 sampai tahun depan |
+
+```json
+{
+    "judul": "Belajar PHP Native",
+    "penulis": "Budi Santoso",
+    "tahun": 2023
+}
+```
+
+**Urutan pemeriksaan:**
+
+1. `401` - token tidak valid
+2. `400` - body bukan JSON valid atau ada field kosong
+3. `422` - tahun tidak valid, atau judul/penulis terlalu panjang
+4. `201` - data disimpan
+
+**Contoh response:**
+
+*Sukses - `201 Created` - Data berhasil ditambahkan*
+
+```json
+{
+    "success": true,
+    "message": "Data berhasil ditambahkan",
+    "data": {
+        "id": 1
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `401 Unauthorized` - Tanpa token*
+
+(header `WWW-Authenticate: Bearer`)
+
+```json
+{
+    "success": false,
+    "message": "Token tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `422 Unprocessable Entity` - Tahun tidak valid*
+
+```json
+{
+    "success": false,
+    "message": "Data tidak lolos validasi",
+    "data": null,
+    "errors": {
+        "tahun": "Tahun harus berupa angka 4 digit yang valid"
+    },
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X POST "http://localhost/ACARA16-25/ACARA26/public/buku" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"judul": "Belajar PHP Native", "penulis": "Budi Santoso", "tahun": 2023}'
+```
+
+#### 11. `PUT /buku?id={id}`
+
+- **Controller:** `BukuController::update()`
+- **Autentikasi:** **Wajib** - header `Authorization: Bearer <token>` (`Auth::requireAuth()`)
+- **Fungsi:** Mengubah seluruh data buku.
+
+**Headers:**
+
+| Header | Nilai | Keterangan |
+|---|---|---|
+| `Content-Type` | `application/json` | Body dikirim sebagai JSON |
+| `Authorization` | `Bearer <token>` | Token dari `POST /login` (berlaku 5 menit) |
+
+**Query parameter:**
+
+| Parameter | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `id` | integer | Ya | ID data; angka positif (contoh `?id=1`) |
+
+**Request body:**
+
+| Field | Tipe | Wajib | Aturan |
+|---|---|---|---|
+| `judul` | string | Ya | Maks 150 karakter |
+| `penulis` | string | Ya | Maks 100 karakter |
+| `tahun` | integer | Ya | Angka 4 digit, 1000 sampai tahun depan |
+
+```json
+{
+    "judul": "Belajar PHP Native (Edisi 2)",
+    "penulis": "Budi Santoso",
+    "tahun": 2024
+}
+```
+
+**Urutan pemeriksaan:**
+
+1. `401` - token tidak valid
+2. `400` - `id` tidak valid
+3. `404` - ID tidak ditemukan
+4. `400` / `422` - body tidak valid
+5. `200` - data diperbarui
+
+**Contoh response:**
+
+*Sukses - `200 OK` - Data berhasil diperbarui*
+
+```json
+{
+    "success": true,
+    "message": "Data berhasil diperbarui",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `401 Unauthorized` - Tanpa token*
+
+(header `WWW-Authenticate: Bearer`)
+
+```json
+{
+    "success": false,
+    "message": "Token tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `404 Not Found` - ID tidak ditemukan*
+
+```json
+{
+    "success": false,
+    "message": "Data tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X PUT "http://localhost/ACARA16-25/ACARA26/public/buku?id=1" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"judul": "Belajar PHP Native (Edisi 2)", "penulis": "Budi Santoso", "tahun": 2024}'
+```
+
+#### 12. `DELETE /buku?id={id}`
+
+- **Controller:** `BukuController::destroy()`
+- **Autentikasi:** **Wajib** - header `Authorization: Bearer <token>` (`Auth::requireAuth()`)
+- **Fungsi:** Menghapus buku berdasarkan ID.
+
+**Headers:**
+
+| Header | Nilai | Keterangan |
+|---|---|---|
+| `Authorization` | `Bearer <token>` | Token dari `POST /login` (berlaku 5 menit) |
+
+**Query parameter:**
+
+| Parameter | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| `id` | integer | Ya | ID data; angka positif (contoh `?id=1`) |
+
+**Urutan pemeriksaan:**
+
+1. `401` - token tidak valid
+2. `400` - `id` tidak valid
+3. `404` - ID tidak ditemukan
+4. `200` - data dihapus
+
+**Contoh response:**
+
+*Sukses - `200 OK` - Data berhasil dihapus*
+
+```json
+{
+    "success": true,
+    "message": "Data berhasil dihapus",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `401 Unauthorized` - Tanpa token*
+
+(header `WWW-Authenticate: Bearer`)
+
+```json
+{
+    "success": false,
+    "message": "Token tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*Gagal - `404 Not Found` - ID tidak ditemukan*
+
+```json
+{
+    "success": false,
+    "message": "Data tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+**Contoh curl:**
+
+```bash
+curl -X DELETE "http://localhost/ACARA16-25/ACARA26/public/buku?id=1" \
+  -H "Authorization: Bearer <token>"
+```
+
+### 5.4 Upload Foto Mahasiswa (Acara 26)
+
+Kolom `foto` pada tabel `mahasiswa` menyimpan **nama berkas** (bukan isi gambar). Berkasnya berada di `public/uploads/` dan dapat
+dibuka browser lewat `{BASE_URL}/uploads/{foto}`. Field `foto` ikut muncul pada response `GET /mahasiswa` (bernilai `null` bila belum ada foto).
+
+| Operasi | Cara mengirim | Perilaku foto |
+|---|---|---|
+| Tambah tanpa foto | `POST /mahasiswa` JSON (seperti sebelumnya) atau multipart tanpa `foto` | `foto = null` |
+| Tambah dengan foto | `POST /mahasiswa`, `Content-Type: multipart/form-data` (Postman: Body, form-data) | Berkas diperiksa, di-rename, disimpan |
+| Ubah tanpa foto baru | `PUT /mahasiswa?id=N` JSON, atau `POST /mahasiswa?id=N&_method=PUT` tanpa `foto` | Foto lama **dipertahankan** |
+| Ubah dengan foto baru | **`POST /mahasiswa?id=N&_method=PUT`** multipart | Foto baru disimpan, foto lama dihapus dengan `unlink()` (tugas mandiri 1) |
+| Hapus data | `DELETE /mahasiswa?id=N` | Berkas foto ikut dihapus |
+
+**Mengapa `POST` + `_method=PUT`?** PHP hanya mengisi `$_POST` dan `$_FILES` dari body multipart untuk method `POST`. Pada `PUT` asli keduanya
+kosong, sehingga berkas hilang diam-diam. Karena itu `PUT` asli dengan multipart dijawab `400` berisi petunjuk, dan Router
+memperlakukan `POST ?id=N&_method=PUT` sebagai `PUT`. Nilai `_method` selain `PUT` diabaikan (tidak dapat dipakai untuk menghapus lewat POST).
+
+**Field form-data:**
+
+| Field | Tipe | Wajib | Aturan |
+|---|---|---|---|
+| `nim` | text | Ya | Tepat 9 karakter; unik |
+| `nama` | text | Ya | Maks 100 karakter |
+| `prodi` | text | Ya | Maks 50 karakter |
+| `foto` | file | Tidak | JPG/PNG, isi berkas valid menurut `exif_imagetype()`, maks 2MB |
+
+Header: `Authorization: Bearer <token admin>`. **Jangan** mengisi `Content-Type` sendiri; browser dan Postman menambahkannya
+beserta `boundary`.
+
+**Pemeriksaan foto (berurutan):**
+
+1. Kode error upload PHP (`UPLOAD_ERR_*`): terlalu besar menjadi `422`, terputus `400`, kegagalan server `500`
+2. `is_uploaded_file()`: berkas harus benar-benar hasil upload HTTP
+3. Ekstensi `jpg`/`jpeg`/`png` **dan** `exif_imagetype()` (membaca signature isi berkas, bukan `$_FILES['type']`)
+4. Ukuran maks 2MB
+5. Nama baru `uniqid('foto_', true)` + ekstensi sesuai **isi** berkas; berkas dipindahkan hanya setelah semua validasi (data, NIM unik) lolos
+
+**Contoh response:**
+
+*Sukses - `201 Created` - tambah dengan foto*
+
+```json
+{
+    "success": true,
+    "message": "Data berhasil ditambahkan",
+    "data": {
+        "id": 2,
+        "foto": "foto_6ae320e233b1a5.23390763.png"
+    },
+    "timestamp": "2026-10-30T10:30:00+07:00"
+}
+```
+
+*Gagal - `422 Unprocessable Entity` - berkas bukan gambar (mis. skrip PHP bernama `.jpg`)*
+
+```json
+{
+    "success": false,
+    "message": "Berkas harus berupa gambar JPG/PNG yang valid",
+    "data": null,
+    "errors": {
+        "foto": "Berkas harus berupa gambar JPG/PNG yang valid"
+    },
+    "timestamp": "2026-10-30T10:30:00+07:00"
+}
+```
+
+*Gagal - `422 Unprocessable Entity` - lebih dari 2MB* (`message` dan `errors.foto`: "Ukuran berkas maksimal 2MB")
+
+*Gagal - `400 Bad Request` - `PUT` asli membawa multipart*
+
+```json
+{
+    "success": false,
+    "message": "Untuk mengirim berkas gunakan POST, mis. POST /mahasiswa?id=1&_method=PUT",
+    "data": null,
+    "errors": {
+        "foto": "Method PUT tidak dapat membawa berkas multipart"
+    },
+    "timestamp": "2026-10-30T10:30:00+07:00"
+}
+```
+
+Status lain tidak berubah: `401`, `403` (dicek sebelum berkas disentuh), `404` (id tidak ada), `409` (NIM duplikat; berkas tidak disimpan).
+
+**Keamanan folder `public/uploads/`:** `.htaccess` di dalamnya mematikan PHP (`php_flag engine off`) dan hanya mengizinkan berkas `.jpg`/`.jpeg`/`.png`
+diakses (selain itu `403`), ditambah `X-Content-Type-Options: nosniff`. Pada Laragon/XAMPP default, pastikan `AllowOverride All` aktif agar
+`.htaccess` dibaca. Batas PHP `upload_max_filesize` dan `post_max_size` minimal `2M` (default Laragon sudah memenuhi).
+
+## 6. Response Umum Router
+
+*`405 Method Not Allowed` - Method tidak diizinkan (PATCH)* (`PATCH /mahasiswa?id=1`)
+
+(header `Allow: GET, POST, PUT, DELETE`)
+
+```json
+{
+    "success": false,
+    "message": "Method tidak diizinkan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+*`404 Not Found` - Endpoint tidak dikenal* (`GET /dosen`)
+
+```json
+{
+    "success": false,
+    "message": "Endpoint tidak ditemukan",
+    "data": null,
+    "timestamp": "2026-10-24T06:40:00+07:00"
+}
+```
+
+## 7. Dokumentasi di Postman
+
+Collection `API_Sistem_Informasi_Akademik_MVC.postman_collection.json` memuat setiap endpoint di atas. Tiap request berisi **Description** (Controller, method, kebutuhan autentikasi) dan **Examples** (contoh response sukses dan gagal). Postman menghasilkan tampilan dokumentasi dari keduanya lewat **View Documentation**.
+
+## 8. Akses dari Frontend (CORS)
+
+Sejak Acara 24, `public/index.php` memasang header CORS satu kali sebelum Router dijalankan, sehingga berlaku untuk seluruh resource
+(`/mahasiswa`, `/buku`, `/login`, `/register`), termasuk response galat (401, 404, 405, 500).
+
+| Header response | Nilai |
+|---|---|
+| `Access-Control-Allow-Origin` | `*` (semua origin; ganti dengan origin frontend saat deployment) |
+| `Access-Control-Allow-Methods` | `GET, POST, PUT, DELETE, OPTIONS` |
+| `Access-Control-Allow-Headers` | `Content-Type, Authorization` |
+
+**Preflight.** Untuk request lintas origin yang memakai `PUT`/`DELETE`, header `Authorization`, atau `Content-Type: application/json`,
+browser lebih dulu mengirim `OPTIONS`. API menjawab `204 No Content` tanpa body (dan `Access-Control-Max-Age: 600`), lalu browser mengirim request aslinya.
+`OPTIONS` tidak dihitung sebagai endpoint dan tidak memerlukan token.
+
+**View pertama.** `public/views/index.html` (berkas statis, tidak lewat Router) memanggil `GET /mahasiswa` dengan `fetch()` dan menampilkan hasilnya dalam tabel.
+Halaman ini satu origin dengan API, sehingga tidak bergantung pada CORS; header CORS dibutuhkan bila frontend dilayani dari origin lain
+(mis. `http://localhost:5173`).
+
+Contoh pemanggilan dari JavaScript (operasi tulis memerlukan token dari `POST /login`):
+
+```javascript
+const response = await fetch(`${BASE_URL}/mahasiswa?id=1`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ nim: '220100101', nama: 'Andi S', prodi: 'Teknik Informatika' })
+});
+const hasil = await response.json();
+if (!response.ok) { /* fetch() tidak reject untuk 4xx/5xx: periksa response.ok sendiri */ }
+```

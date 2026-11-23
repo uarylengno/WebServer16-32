@@ -1,0 +1,13 @@
+# Foto hasil upload dan berkas cadangan database tidak ikut ke repository (berisi data pengguna).
+public/uploads/*
+!public/uploads/.gitkeep
+!public/uploads/.htaccess
+backup/*
+!backup/.gitkeep
+
+# Acara 28: rahasia server dan paket hasil build
+app/config/secret.local.php
+deploy_paket/
+
+# Acara 30: berkas log aplikasi
+app/logs/*.log

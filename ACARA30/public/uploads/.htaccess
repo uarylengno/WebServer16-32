@@ -1,0 +1,25 @@
+# Acara 26: pengamanan folder upload.
+# Berkas di sini berasal dari pengguna, jadi TIDAK PERNAH boleh dijalankan sebagai skrip.
+
+# 1) Matikan mesin PHP untuk folder ini (mod_php).
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+# 2) Daftar putih: hanya gambar JPG/PNG yang boleh diakses lewat browser; selain itu (termasuk .php, .phtml,
+#    .phar, .htaccess) ditolak dengan 403.
+Require all denied
+<FilesMatch "\.(jpe?g|png)$">
+    Require all granted
+</FilesMatch>
+
+# 3) Cegah browser "menebak" tipe isi berkas.
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>

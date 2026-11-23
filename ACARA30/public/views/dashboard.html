@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="vendor/bootstrap/bootstrap.min.css">
+</head>
+<body class="bg-body-tertiary">
+    <!-- Disembunyikan sampai dashboard.js memastikan ada sesi, agar halaman tidak sempat tampil sebelum dialihkan ke login. -->
+    <main id="isi" class="container py-4" style="max-width: 960px" hidden>
+        <header class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+            <div>
+                <h1 class="h3 mb-0">Dashboard</h1>
+                <p class="text-body-secondary mb-0">Sistem Informasi Akademik</p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span id="nama-pengguna" class="fw-medium"></span>
+                <span id="lencana-role" class="badge text-bg-secondary"></span>
+                <button type="button" id="tombol-logout" class="btn btn-outline-secondary btn-sm">Logout</button>
+            </div>
+        </header>
+
+        <div id="catatan-user" class="alert alert-info" hidden>
+            Anda masuk sebagai <strong>user</strong>: data hanya dapat dilihat. Menambah, mengubah, dan menghapus data hanya untuk admin.
+        </div>
+
+        <section class="row g-3 mb-4" aria-label="Ringkasan data">
+            <div class="col-12 col-sm-4">
+                <div class="card text-center h-100"><div class="card-body">
+                    <div class="display-6 fw-semibold" id="stat-total">-</div>
+                    <div class="text-body-secondary">Total mahasiswa</div>
+                </div></div>
+            </div>
+            <div class="col-12 col-sm-4">
+                <div class="card text-center h-100"><div class="card-body">
+                    <div class="display-6 fw-semibold" id="stat-prodi">-</div>
+                    <div class="text-body-secondary">Program studi</div>
+                </div></div>
+            </div>
+            <div class="col-12 col-sm-4">
+                <div class="card text-center h-100"><div class="card-body">
+                    <div class="display-6 fw-semibold" id="stat-role">-</div>
+                    <div class="text-body-secondary">Peran Anda</div>
+                </div></div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <h2 class="h5 mb-0">Data Mahasiswa</h2>
+                <div class="d-flex gap-2">
+                    <button type="button" id="tombol-muat" class="btn btn-outline-secondary btn-sm">Muat ulang</button>
+                    <!-- Acara 27: Tambah membuka halaman form_tambah.html -->
+                    <a href="form_tambah.html" id="tombol-tambah" class="btn btn-primary btn-sm hanya-admin">Tambah</a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="status" class="alert alert-info py-2" role="status" aria-live="polite">Memuat data...</div>
+
+                <div class="table-responsive">
+                    <table id="tabel-mahasiswa" class="table table-hover align-middle mb-0" hidden>
+                        <thead>
+                            <tr>
+                                <th scope="col">Foto</th>
+                                <th scope="col">NIM</th>
+                                <th scope="col">Nama</th>
+                                <th scope="col">Program Studi</th>
+                                <th scope="col" class="hanya-admin text-end">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Langkah 3: konfirmasi hapus (modal Bootstrap, menggantikan confirm() bawaan browser) -->
+    <div class="modal fade" id="modal-hapus" tabindex="-1" aria-labelledby="judul-hapus" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title fs-5" id="judul-hapus">Hapus data mahasiswa?</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="teks-hapus" class="mb-2"></p>
+                    <p class="text-body-secondary small mb-0">Tindakan ini tidak dapat dibatalkan. Foto mahasiswa ikut dihapus.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="button" id="tombol-konfirmasi-hapus" class="btn btn-danger">Ya, hapus</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="vendor/bootstrap/bootstrap.bundle.min.js"></script>
+    <script src="common.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

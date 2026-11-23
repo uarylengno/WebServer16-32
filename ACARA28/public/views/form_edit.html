@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ubah Mahasiswa</title>
+    <link rel="stylesheet" href="vendor/bootstrap/bootstrap.min.css">
+</head>
+<body class="bg-body-tertiary">
+    <main id="isi" class="container py-4" style="max-width: 640px" hidden>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="dashboard.html">Dashboard</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Ubah Mahasiswa</li>
+            </ol>
+        </nav>
+
+        <div class="card">
+            <div class="card-body p-4">
+                <h1 class="h4 mb-1">Ubah Mahasiswa</h1>
+                <p class="text-body-secondary">Sistem Informasi Akademik. Kolom bertanda <span class="text-danger">*</span> wajib diisi.</p>
+
+                <div id="galat-umum" class="alert alert-danger" role="alert" hidden></div>
+                <div id="status-muat" class="alert alert-info py-2" role="status">Memuat data...</div>
+
+                <!-- novalidate: pemeriksaan dilakukan oleh Validasi (common.js) agar pesannya seragam dengan pesan server -->
+                <form id="form-mhs" novalidate>
+                    <div class="mb-3">
+                        <label for="f-nim" class="form-label">NIM <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="f-nim" name="nim" autocomplete="off" maxlength="30" required>
+                        <div class="form-text">Tepat 9 karakter.</div>
+                        <div class="invalid-feedback" id="galat-nim"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="f-nama" class="form-label">Nama <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="f-nama" name="nama" autocomplete="off" required>
+                        <div class="invalid-feedback" id="galat-nama"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="f-prodi" class="form-label">Program Studi <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="f-prodi" name="prodi" autocomplete="off" required>
+                        <div class="invalid-feedback" id="galat-prodi"></div>
+                    </div>
+                    <div class="mb-4">
+                        <label for="f-foto" class="form-label">Foto (opsional)</label>
+                        <div class="d-flex align-items-start gap-3">
+                            <div id="pratinjau-bungkus" hidden>
+                                <img id="pratinjau" class="img-thumbnail" style="width: 96px; height: 96px; object-fit: cover" alt="Pratinjau foto mahasiswa">
+                            </div>
+                            <div class="flex-grow-1">
+                                <!-- accept hanya mempermudah memilih berkas; pemeriksaan sebenarnya dilakukan server -->
+                                <input type="file" class="form-control" id="f-foto" name="foto" accept="image/jpeg,image/png">
+                                <div class="form-text" id="petunjuk-foto">JPG atau PNG, maksimal 2MB.</div>
+                                <div class="invalid-feedback" id="galat-foto"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="dashboard.html" class="btn btn-outline-secondary" id="tombol-batal">Batal</a>
+                        <button type="submit" id="tombol-simpan" class="btn btn-primary" disabled>
+                            <span id="spinner-simpan" class="spinner-border spinner-border-sm me-1" aria-hidden="true" hidden></span>
+                            <span id="teks-simpan">Simpan</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <script src="vendor/bootstrap/bootstrap.bundle.min.js"></script>
+    <script src="common.js"></script>
+    <script src="form_umum.js"></script>
+    <script src="form_edit.js"></script>
+</body>
+</html>

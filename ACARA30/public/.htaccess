@@ -1,0 +1,17 @@
+RewriteEngine On
+
+# Acara 30 (Langkah 2): paksa HTTPS. NONAKTIF di lokal (Laragon tidak memakai HTTPS); scripts/buat_paket_deploy.php
+# mengaktifkannya di paket hosting. Untuk mengaktifkan manual di server: hapus tanda # pada tiga baris berikut.
+# Syarat kedua menghindari perulangan pengalihan bila SSL diakhiri di proxy/CDN yang meneruskan X-Forwarded-Proto.
+# RewriteCond %{HTTPS} off
+# RewriteCond %{HTTP:X-Forwarded-Proto} !https
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Teruskan header Authorization ke PHP. Pada sebagian konfigurasi Apache (mis. CGI/FastCGI)
+# header ini dibuang sehingga Bearer Token tidak terbaca (selalu 401).
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]

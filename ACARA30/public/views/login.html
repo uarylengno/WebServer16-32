@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Masuk</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <main>
+        <section class="kartu kartu-login">
+            <div>
+                <h1>Masuk</h1>
+                <p class="sub">Sistem Informasi Akademik</p>
+            </div>
+
+            <p id="pesan" class="pesan" role="status" aria-live="polite" hidden></p>
+
+            <form id="form-login" novalidate>
+                <div class="bidang">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" autocomplete="username" required>
+                </div>
+                <div class="bidang">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" autocomplete="current-password" required>
+                </div>
+                <button type="submit" id="tombol-masuk">Masuk</button>
+            </form>
+
+            <p class="sub"><a href="index.html">Lihat data mahasiswa tanpa masuk</a></p>
+        </section>
+    </main>
+    <script src="common.js"></script>
+    <script src="login.js"></script>
+</body>
+</html>
